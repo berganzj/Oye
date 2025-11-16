@@ -8,6 +8,7 @@
 import AVFoundation
 import Accelerate
 import Combine
+import SwiftUI
 
 @MainActor
 class AudioManager: ObservableObject {

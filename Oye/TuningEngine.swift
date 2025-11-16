@@ -111,6 +111,8 @@ struct UkuleleTuning {
 }
 
 // MARK: - Tuning Engine
+import Combine
+
 class TuningEngine: ObservableObject {
     @Published var currentNote: MusicalNote?
     @Published var selectedInstrument: InstrumentType = .guitar
