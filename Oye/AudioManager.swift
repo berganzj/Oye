@@ -32,12 +32,19 @@ class AudioManager: ObservableObject {
         inputNode = audioEngine.inputNode
         fftAnalyzer = FFTAnalyzer(sampleRate: sampleRate, bufferSize: Int(bufferSize))
         
+        // Get the input format from the microphone
         let inputFormat = inputNode.outputFormat(forBus: 0)
-        let recordingFormat = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1)!
         
-        inputNode.installTap(onBus: 0, bufferSize: bufferSize, format: recordingFormat) { [weak self] (buffer, time) in
+        // Create our desired recording format (mono, 44.1kHz)
+        guard let recordingFormat = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1) else {
+            print("Failed to create recording format")
+            return
+        }
+        
+        // Install tap with the input's native format, we'll handle conversion in the callback
+        inputNode.installTap(onBus: 0, bufferSize: bufferSize, format: inputFormat) { [weak self] (buffer, time) in
             Task { @MainActor in
-                self?.processAudioBuffer(buffer)
+                self?.processAudioBuffer(buffer, inputFormat: inputFormat, targetFormat: recordingFormat)
             }
         }
     }
@@ -57,6 +64,8 @@ class AudioManager: ObservableObject {
         do {
             let audioSession = AVAudioSession.sharedInstance()
             try audioSession.setCategory(.record, mode: .measurement, options: [])
+            try audioSession.setPreferredSampleRate(sampleRate)
+            try audioSession.setPreferredInputNumberOfChannels(1)
             try audioSession.setActive(true)
         } catch {
             print("Audio session configuration failed: \(error)")
@@ -67,10 +76,23 @@ class AudioManager: ObservableObject {
         guard permissionGranted && !isListening else { return }
         
         do {
+            // Reset audio engine if needed
+            if audioEngine.isRunning {
+                audioEngine.stop()
+                audioEngine.reset()
+            }
+            
+            // Reconfigure audio session
+            configureAudioSession()
+            
+            // Prepare and start the audio engine
+            audioEngine.prepare()
             try audioEngine.start()
             isListening = true
+            print("Audio engine started successfully")
         } catch {
             print("Audio engine start failed: \(error)")
+            isListening = false
         }
     }
     
@@ -78,14 +100,53 @@ class AudioManager: ObservableObject {
         guard isListening else { return }
         
         audioEngine.stop()
+        inputNode.removeTap(onBus: 0)
         isListening = false
         currentFrequency = 0.0
+        
+        // Re-setup the tap for next time
+        setupAudioEngine()
     }
     
-    private func processAudioBuffer(_ buffer: AVAudioPCMBuffer) {
-        guard let channelData = buffer.floatChannelData?[0] else { return }
+    private func processAudioBuffer(_ buffer: AVAudioPCMBuffer, inputFormat: AVAudioFormat, targetFormat: AVAudioFormat) {
+        // Convert buffer to our target format if needed
+        let processedBuffer: AVAudioPCMBuffer
         
-        let frameCount = Int(buffer.frameLength)
+        if inputFormat.sampleRate != targetFormat.sampleRate || inputFormat.channelCount != targetFormat.channelCount {
+            // Create converter
+            guard let converter = AVAudioConverter(from: inputFormat, to: targetFormat) else {
+                print("Failed to create audio converter")
+                return
+            }
+            
+            // Create output buffer
+            let frameCapacity = AVAudioFrameCount(Double(buffer.frameLength) * targetFormat.sampleRate / inputFormat.sampleRate)
+            guard let convertedBuffer = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: frameCapacity) else {
+                print("Failed to create converted buffer")
+                return
+            }
+            
+            // Convert
+            var error: NSError?
+            let status = converter.convert(to: convertedBuffer, error: &error) { _, outStatus in
+                outStatus.pointee = .haveData
+                return buffer
+            }
+            
+            guard status != .error, error == nil else {
+                print("Audio conversion failed: \(error?.localizedDescription ?? "Unknown error")")
+                return
+            }
+            
+            processedBuffer = convertedBuffer
+        } else {
+            processedBuffer = buffer
+        }
+        
+        // Process the audio data
+        guard let channelData = processedBuffer.floatChannelData?[0] else { return }
+        
+        let frameCount = Int(processedBuffer.frameLength)
         let audioData = Array(UnsafeBufferPointer(start: channelData, count: frameCount))
         
         if let dominantFrequency = fftAnalyzer.findDominantFrequency(in: audioData) {
