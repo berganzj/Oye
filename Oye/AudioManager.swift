@@ -34,17 +34,19 @@ class AudioManager: ObservableObject {
         
         // Get the input format from the microphone
         let inputFormat = inputNode.outputFormat(forBus: 0)
+        print("Input format: \(inputFormat)")
         
-        // Create our desired recording format (mono, 44.1kHz)
-        guard let recordingFormat = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1) else {
-            print("Failed to create recording format")
+        // Validate that our input format is acceptable
+        guard inputFormat.sampleRate > 0 && inputFormat.channelCount > 0 else {
+            print("Invalid input format detected")
             return
         }
         
-        // Install tap with the input's native format, we'll handle conversion in the callback
+        // For iOS 18 compatibility, use the input format directly instead of converting
+        // This avoids format validation issues
         inputNode.installTap(onBus: 0, bufferSize: bufferSize, format: inputFormat) { [weak self] (buffer, time) in
             Task { @MainActor in
-                self?.processAudioBuffer(buffer, inputFormat: inputFormat, targetFormat: recordingFormat)
+                self?.processAudioBuffer(buffer, originalFormat: inputFormat)
             }
         }
     }
@@ -108,46 +110,37 @@ class AudioManager: ObservableObject {
         setupAudioEngine()
     }
     
-    private func processAudioBuffer(_ buffer: AVAudioPCMBuffer, inputFormat: AVAudioFormat, targetFormat: AVAudioFormat) {
-        // Convert buffer to our target format if needed
-        let processedBuffer: AVAudioPCMBuffer
+    private func processAudioBuffer(_ buffer: AVAudioPCMBuffer, originalFormat: AVAudioFormat) {
+        guard let channelData = buffer.floatChannelData else { return }
         
-        if inputFormat.sampleRate != targetFormat.sampleRate || inputFormat.channelCount != targetFormat.channelCount {
-            // Create converter
-            guard let converter = AVAudioConverter(from: inputFormat, to: targetFormat) else {
-                print("Failed to create audio converter")
-                return
-            }
-            
-            // Create output buffer
-            let frameCapacity = AVAudioFrameCount(Double(buffer.frameLength) * targetFormat.sampleRate / inputFormat.sampleRate)
-            guard let convertedBuffer = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: frameCapacity) else {
-                print("Failed to create converted buffer")
-                return
-            }
-            
-            // Convert
-            var error: NSError?
-            let status = converter.convert(to: convertedBuffer, error: &error) { _, outStatus in
-                outStatus.pointee = .haveData
-                return buffer
-            }
-            
-            guard status != .error, error == nil else {
-                print("Audio conversion failed: \(error?.localizedDescription ?? "Unknown error")")
-                return
-            }
-            
-            processedBuffer = convertedBuffer
+        let frameCount = Int(buffer.frameLength)
+        let channelCount = Int(originalFormat.channelCount)
+        
+        // Convert to mono if needed, otherwise use first channel
+        var audioData: [Float]
+        
+        if channelCount == 1 {
+            // Already mono
+            audioData = Array(UnsafeBufferPointer(start: channelData[0], count: frameCount))
         } else {
-            processedBuffer = buffer
+            // Convert stereo/multi-channel to mono by averaging channels
+            audioData = Array(0..<frameCount).map { frameIndex in
+                var sum: Float = 0
+                for channel in 0..<channelCount {
+                    sum += channelData[channel][frameIndex]
+                }
+                return sum / Float(channelCount)
+            }
         }
         
-        // Process the audio data
-        guard let channelData = processedBuffer.floatChannelData?[0] else { return }
-        
-        let frameCount = Int(processedBuffer.frameLength)
-        let audioData = Array(UnsafeBufferPointer(start: channelData, count: frameCount))
+        // Resample if the sample rate is different from our target
+        let actualSampleRate = originalFormat.sampleRate
+        if actualSampleRate != sampleRate && audioData.count >= 2 {
+            // Simple resampling for different sample rates
+            let resampleRatio = sampleRate / actualSampleRate
+            let targetLength = Int(Double(audioData.count) * resampleRatio)
+            audioData = resampleAudio(audioData, targetLength: targetLength)
+        }
         
         if let dominantFrequency = fftAnalyzer.findDominantFrequency(in: audioData) {
             // Only update if we have a significant frequency (above background noise)
@@ -155,6 +148,30 @@ class AudioManager: ObservableObject {
                 currentFrequency = dominantFrequency
             }
         }
+    }
+    
+    private func resampleAudio(_ input: [Float], targetLength: Int) -> [Float] {
+        guard targetLength > 0 && input.count > 1 else { return input }
+        
+        let inputLength = input.count
+        let ratio = Double(inputLength - 1) / Double(targetLength - 1)
+        
+        var output = [Float](repeating: 0, count: targetLength)
+        
+        for i in 0..<targetLength {
+            let position = Double(i) * ratio
+            let index = Int(position)
+            let fraction = Float(position - Double(index))
+            
+            if index < inputLength - 1 {
+                // Linear interpolation
+                output[i] = input[index] * (1 - fraction) + input[index + 1] * fraction
+            } else {
+                output[i] = input[inputLength - 1]
+            }
+        }
+        
+        return output
     }
 }
 
