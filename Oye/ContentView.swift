@@ -36,8 +36,9 @@ struct ContentView: View {
                 Spacer()
             }
             .padding()
-            .navigationTitle("Oye Tuner")
-            .navigationBarTitleDisplayMode(.large)
+            .padding(.top, 8) // Extra padding from navigation bar
+            .navigationTitle("Oye")
+            .navigationBarTitleDisplayMode(.inline)
         }
         .onReceive(audioManager.$currentFrequency) { frequency in
             tuningEngine.analyzeFrequency(frequency)
@@ -48,25 +49,27 @@ struct ContentView: View {
 // MARK: - Settings Section
 struct SettingsSection: View {
     @ObservedObject var tuningEngine: TuningEngine
-    @State private var showSettings = true
+    @State private var showSettings = false // Start collapsed
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 8) {
             Button(action: {
-                withAnimation {
+                withAnimation(.easeInOut(duration: 0.3)) {
                     showSettings.toggle()
                 }
             }) {
                 HStack {
-                    Text("Tuning Settings")
+                    Text("Settings")
                         .font(.headline)
-                        .foregroundColor(.secondary)
+                        .foregroundColor(.primary)
                     
                     Spacer()
                     
-                    Image(systemName: showSettings ? "chevron.down" : "chevron.right")
+                    Image(systemName: showSettings ? "chevron.up" : "chevron.down")
                         .foregroundColor(.secondary)
+                        .font(.caption)
                 }
+                .padding(.horizontal, 4)
             }
             
             if showSettings {
