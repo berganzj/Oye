@@ -101,16 +101,18 @@ class AudioManager: ObservableObject {
 class FFTAnalyzer {
     private let sampleRate: Double
     private let bufferSize: Int
-    private let fftSetup: vDSP_DFT_Setup
+    private let log2n: vDSP_Length
+    private let fftSetup: FFTSetup
     
     init(sampleRate: Double, bufferSize: Int) {
         self.sampleRate = sampleRate
         self.bufferSize = bufferSize
-        self.fftSetup = vDSP_DFT_zop_CreateSetup(nil, vDSP_Length(bufferSize), vDSP_DFT_Direction.FORWARD)!
+        self.log2n = vDSP_Length(log2(Float(bufferSize)))
+        self.fftSetup = vDSP_create_fftsetup(log2n, Int32(kFFTRadix2))!
     }
     
     deinit {
-        vDSP_DFT_DestroySetup(fftSetup)
+        vDSP_destroy_fftsetup(fftSetup)
     }
     
     func findDominantFrequency(in audioData: [Float]) -> Double? {
@@ -121,24 +123,29 @@ class FFTAnalyzer {
         applyHannWindow(&windowedData)
         
         // Prepare for FFT
-        var realParts = windowedData
-        var imaginaryParts = [Float](repeating: 0.0, count: bufferSize)
+        let halfSize = bufferSize / 2
+        var realParts = [Float](repeating: 0.0, count: halfSize)
+        var imaginaryParts = [Float](repeating: 0.0, count: halfSize)
         
-        // Perform FFT
-        realParts.withUnsafeMutableBufferPointer { realPtr in
-            imaginaryParts.withUnsafeMutableBufferPointer { imagPtr in
-                vDSP_DFT_Execute(fftSetup, realPtr.baseAddress!, imagPtr.baseAddress!, realPtr.baseAddress!, imagPtr.baseAddress!)
-            }
+        // Convert to split complex format
+        var splitComplex = DSPSplitComplex(realp: &realParts, imagp: &imaginaryParts)
+        
+        // Convert input to packed format for FFT
+        windowedData.withUnsafeBufferPointer { inputPtr in
+            vDSP_ctoz(UnsafePointer<DSPComplex>(OpaquePointer(inputPtr.baseAddress!)), 2, &splitComplex, 1, vDSP_Length(halfSize))
         }
         
+        // Perform FFT
+        vDSP_fft_zrip(fftSetup, &splitComplex, 1, log2n, Int32(FFT_FORWARD))
+        
         // Calculate magnitudes
-        var magnitudes = [Float](repeating: 0.0, count: bufferSize / 2)
-        vDSP_zvmags(&realParts, 1, &magnitudes, 1, vDSP_Length(bufferSize / 2))
+        var magnitudes = [Float](repeating: 0.0, count: halfSize)
+        vDSP_zvmags(&splitComplex, 1, &magnitudes, 1, vDSP_Length(halfSize))
         
         // Find peak frequency
         var maxIndex: vDSP_Length = 0
         var maxValue: Float = 0
-        vDSP_maxvi(&magnitudes, 1, &maxValue, &maxIndex, vDSP_Length(bufferSize / 2))
+        vDSP_maxvi(&magnitudes, 1, &maxValue, &maxIndex, vDSP_Length(halfSize))
         
         // Convert bin index to frequency
         let frequency = Double(maxIndex) * sampleRate / Double(bufferSize)
