@@ -68,45 +68,35 @@ enum InstrumentType: String, CaseIterable {
 
 struct InstrumentString {
     let name: String
-    let targetFrequency: Double
+    let semitoneOffset: Int // Offset from A4 in semitones
     let stringNumber: Int
+    
+    func targetFrequency(referenceA4: Double) -> Double {
+        return referenceA4 * pow(2.0, Double(semitoneOffset) / 12.0)
+    }
 }
 
 // MARK: - Guitar Tunings
 struct GuitarTuning {
+    // Standard tuning: E2, A2, D3, G3, B3, E4 (relative to A4 = 440 Hz)
     static let standard: [InstrumentString] = [
-        InstrumentString(name: "E", targetFrequency: 82.41, stringNumber: 6),  // Low E
-        InstrumentString(name: "A", targetFrequency: 110.00, stringNumber: 5), // A
-        InstrumentString(name: "D", targetFrequency: 146.83, stringNumber: 4), // D
-        InstrumentString(name: "G", targetFrequency: 196.00, stringNumber: 3), // G
-        InstrumentString(name: "B", targetFrequency: 246.94, stringNumber: 2), // B
-        InstrumentString(name: "E", targetFrequency: 329.63, stringNumber: 1)  // High E
-    ]
-    
-    static let dropD: [InstrumentString] = [
-        InstrumentString(name: "D", targetFrequency: 73.42, stringNumber: 6),  // Drop D
-        InstrumentString(name: "A", targetFrequency: 110.00, stringNumber: 5),
-        InstrumentString(name: "D", targetFrequency: 146.83, stringNumber: 4),
-        InstrumentString(name: "G", targetFrequency: 196.00, stringNumber: 3),
-        InstrumentString(name: "B", targetFrequency: 246.94, stringNumber: 2),
-        InstrumentString(name: "E", targetFrequency: 329.63, stringNumber: 1)
+        InstrumentString(name: "E", semitoneOffset: -29, stringNumber: 6), // Low E (E2)
+        InstrumentString(name: "A", semitoneOffset: -24, stringNumber: 5), // A (A2)
+        InstrumentString(name: "D", semitoneOffset: -19, stringNumber: 4), // D (D3)
+        InstrumentString(name: "G", semitoneOffset: -14, stringNumber: 3), // G (G3)
+        InstrumentString(name: "B", semitoneOffset: -10, stringNumber: 2), // B (B3)
+        InstrumentString(name: "E", semitoneOffset: -5, stringNumber: 1)   // High E (E4)
     ]
 }
 
 // MARK: - Ukulele Tunings
 struct UkuleleTuning {
+    // Standard tuning: G4, C4, E4, A4 (relative to A4 = 440 Hz)
     static let standard: [InstrumentString] = [
-        InstrumentString(name: "G", targetFrequency: 392.00, stringNumber: 4), // High G
-        InstrumentString(name: "C", targetFrequency: 261.63, stringNumber: 3), // C
-        InstrumentString(name: "E", targetFrequency: 329.63, stringNumber: 2), // E
-        InstrumentString(name: "A", targetFrequency: 440.00, stringNumber: 1)  // A
-    ]
-    
-    static let lowG: [InstrumentString] = [
-        InstrumentString(name: "G", targetFrequency: 196.00, stringNumber: 4), // Low G
-        InstrumentString(name: "C", targetFrequency: 261.63, stringNumber: 3),
-        InstrumentString(name: "E", targetFrequency: 329.63, stringNumber: 2),
-        InstrumentString(name: "A", targetFrequency: 440.00, stringNumber: 1)
+        InstrumentString(name: "G", semitoneOffset: -2, stringNumber: 4),  // G4
+        InstrumentString(name: "C", semitoneOffset: -9, stringNumber: 3),  // C4
+        InstrumentString(name: "E", semitoneOffset: -5, stringNumber: 2),  // E4
+        InstrumentString(name: "A", semitoneOffset: 0, stringNumber: 1)    // A4 (reference)
     ]
 }
 
@@ -117,9 +107,21 @@ class TuningEngine: ObservableObject {
     @Published var currentNote: MusicalNote?
     @Published var selectedInstrument: InstrumentType = .guitar
     @Published var detectedString: InstrumentString?
+    @Published var referenceFrequency: Double = 440.0 // A4 - adjustable between 431-449 Hz
     
     private let noteNames = ["C", "C♯", "D", "D♯", "E", "F", "F♯", "G", "G♯", "A", "A♯", "B"]
-    private let referenceFrequency: Double = 440.0 // A4
+    
+    // Valid range for reference frequency
+    let minReferenceFrequency: Double = 431.0
+    let maxReferenceFrequency: Double = 449.0
+    
+    func setReferenceFrequency(_ frequency: Double) {
+        referenceFrequency = max(minReferenceFrequency, min(maxReferenceFrequency, frequency))
+        // Recalculate current note with new reference if we have a frequency
+        if let currentFreq = currentNote?.frequency {
+            analyzeFrequency(currentFreq)
+        }
+    }
     
     func analyzeFrequency(_ frequency: Double) {
         guard frequency > 0 else {
@@ -166,7 +168,9 @@ class TuningEngine: ObservableObject {
         
         // Find the string with frequency closest to detected frequency
         return strings.min { string1, string2 in
-            abs(string1.targetFrequency - frequency) < abs(string2.targetFrequency - frequency)
+            let freq1 = string1.targetFrequency(referenceA4: referenceFrequency)
+            let freq2 = string2.targetFrequency(referenceA4: referenceFrequency)
+            return abs(freq1 - frequency) < abs(freq2 - frequency)
         }
     }
     
@@ -198,6 +202,6 @@ extension TuningEngine {
     }
     
     func getTargetFrequency() -> Double? {
-        return detectedString?.targetFrequency
+        return detectedString?.targetFrequency(referenceA4: referenceFrequency)
     }
 }

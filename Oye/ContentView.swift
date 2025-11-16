@@ -14,8 +14,11 @@ struct ContentView: View {
     
     var body: some View {
         NavigationView {
-            VStack(spacing: 30) {
-                // Instrument Selector
+            VStack(spacing: 25) {
+                // Frequency Reference Settings
+                FrequencyReferenceSection(tuningEngine: tuningEngine)
+                
+                // Simple Instrument Selector (Guitar/Ukulele text only)
                 InstrumentSelector(tuningEngine: tuningEngine)
                 
                 // Main Tuning Display
@@ -27,7 +30,7 @@ struct ContentView: View {
                 // Control Buttons
                 TunerControls(audioManager: audioManager)
                 
-                // String Reference
+                // String Reference with accurate frequencies
                 StringReference(tuningEngine: tuningEngine)
                 
                 Spacer()
@@ -42,7 +45,70 @@ struct ContentView: View {
     }
 }
 
-// MARK: - Instrument Selector
+// MARK: - Frequency Reference Section
+struct FrequencyReferenceSection: View {
+    @ObservedObject var tuningEngine: TuningEngine
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Reference Frequency")
+                .font(.headline)
+                .foregroundColor(.secondary)
+            
+            VStack(spacing: 8) {
+                HStack {
+                    Text("A4 =")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                    
+                    Spacer()
+                    
+                    Text("\(tuningEngine.referenceFrequency, specifier: "%.1f") Hz")
+                        .font(.title3)
+                        .fontWeight(.semibold)
+                }
+                
+                Slider(
+                    value: Binding(
+                        get: { tuningEngine.referenceFrequency },
+                        set: { tuningEngine.setReferenceFrequency($0) }
+                    ),
+                    in: tuningEngine.minReferenceFrequency...tuningEngine.maxReferenceFrequency,
+                    step: 0.1
+                ) {
+                    Text("Reference Frequency")
+                } minimumValueLabel: {
+                    Text("431")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                } maximumValueLabel: {
+                    Text("449")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                
+                HStack {
+                    Button("440 Hz") {
+                        tuningEngine.setReferenceFrequency(440.0)
+                    }
+                    .font(.caption)
+                    .foregroundColor(.blue)
+                    
+                    Spacer()
+                    
+                    Text("Factory Standard: 440 Hz")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                }
+            }
+            .padding()
+            .background(Color.gray.opacity(0.1))
+            .cornerRadius(12)
+        }
+    }
+}
+
+// MARK: - Simple Instrument Selector (Text Only)
 struct InstrumentSelector: View {
     @ObservedObject var tuningEngine: TuningEngine
     
@@ -52,25 +118,25 @@ struct InstrumentSelector: View {
                 .font(.headline)
                 .foregroundColor(.secondary)
             
-            Picker("Instrument", selection: $tuningEngine.selectedInstrument) {
+            HStack(spacing: 0) {
                 ForEach(InstrumentType.allCases, id: \.self) { instrument in
-                    HStack {
-                        Image(systemName: instrumentIcon(for: instrument))
+                    Button(action: {
+                        tuningEngine.selectInstrument(instrument)
+                    }) {
                         Text(instrument.rawValue)
+                            .font(.headline)
+                            .foregroundColor(tuningEngine.selectedInstrument == instrument ? .white : .primary)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(tuningEngine.selectedInstrument == instrument ? Color.blue : Color.gray.opacity(0.1))
                     }
-                    .tag(instrument)
                 }
             }
-            .pickerStyle(SegmentedPickerStyle())
-        }
-    }
-    
-    private func instrumentIcon(for instrument: InstrumentType) -> String {
-        switch instrument {
-        case .guitar:
-            return "guitars"
-        case .ukulele:
-            return "music.note"
+            .cornerRadius(8)
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(Color.gray.opacity(0.3), lineWidth: 1)
+            )
         }
     }
 }
@@ -268,7 +334,11 @@ struct StringReference: View {
             
             LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: tuningEngine.selectedInstrument == .guitar ? 3 : 2), spacing: 10) {
                 ForEach(tuningEngine.selectedInstrument.strings, id: \.stringNumber) { string in
-                    StringReferenceCard(string: string, isDetected: tuningEngine.detectedString?.stringNumber == string.stringNumber)
+                    StringReferenceCard(
+                        string: string, 
+                        tuningEngine: tuningEngine,
+                        isDetected: tuningEngine.detectedString?.stringNumber == string.stringNumber
+                    )
                 }
             }
         }
@@ -277,6 +347,7 @@ struct StringReference: View {
 
 struct StringReferenceCard: View {
     let string: InstrumentString
+    let tuningEngine: TuningEngine
     let isDetected: Bool
     
     var body: some View {
@@ -289,7 +360,7 @@ struct StringReferenceCard: View {
                 .font(.headline)
                 .fontWeight(.semibold)
             
-            Text("\(string.targetFrequency, specifier: "%.1f") Hz")
+            Text("\(string.targetFrequency(referenceA4: tuningEngine.referenceFrequency), specifier: "%.1f") Hz")
                 .font(.caption2)
                 .foregroundColor(.secondary)
         }
