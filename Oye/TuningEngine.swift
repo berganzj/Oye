@@ -13,6 +13,7 @@ struct MusicalNote {
     let octave: Int
     let frequency: Double
     let cents: Double // Deviation from perfect pitch in cents
+    let threshold: Double // Configurable threshold for tuning status
     
     var displayName: String {
         return "\(name)\(octave)"
@@ -21,6 +22,8 @@ struct MusicalNote {
     var tuningStatus: TuningStatus {
         if abs(cents) <= 5 {
             return .inTune
+        } else if abs(cents) > threshold {
+            return .outOfRange
         } else if cents > 0 {
             return .sharp
         } else {
@@ -33,12 +36,13 @@ enum TuningStatus {
     case inTune
     case sharp
     case flat
+    case outOfRange
     
     var color: String {
         switch self {
         case .inTune: return "green"
-        case .sharp: return "red"
-        case .flat: return "red"
+        case .sharp, .flat: return "orange"
+        case .outOfRange: return "red"
         }
     }
     
@@ -47,6 +51,7 @@ enum TuningStatus {
         case .inTune: return "✓"
         case .sharp: return "♯"
         case .flat: return "♭"
+        case .outOfRange: return "⚠️"
         }
     }
 }
@@ -73,6 +78,14 @@ struct InstrumentString {
     
     func targetFrequency(referenceA4: Double) -> Double {
         return referenceA4 * pow(2.0, Double(semitoneOffset) / 12.0)
+    }
+    
+    // Frequency range for this string (±3 semitones for detection)
+    func frequencyRange(referenceA4: Double) -> ClosedRange<Double> {
+        let target = targetFrequency(referenceA4: referenceA4)
+        let lowerBound = target * pow(2.0, -3.0 / 12.0) // 3 semitones below
+        let upperBound = target * pow(2.0, 3.0 / 12.0)  // 3 semitones above
+        return lowerBound...upperBound
     }
 }
 
@@ -108,6 +121,7 @@ class TuningEngine: ObservableObject {
     @Published var selectedInstrument: InstrumentType = .guitar
     @Published var detectedString: InstrumentString?
     @Published var referenceFrequency: Double = 440.0 // A4 - adjustable between 431-449 Hz
+    @Published var tuningThresholdCents: Double = 45.0 // Configurable threshold for out-of-tune warning
     
     private let noteNames = ["C", "C♯", "D", "D♯", "E", "F", "F♯", "G", "G♯", "A", "A♯", "B"]
     
@@ -115,12 +129,20 @@ class TuningEngine: ObservableObject {
     let minReferenceFrequency: Double = 431.0
     let maxReferenceFrequency: Double = 449.0
     
+    // Valid range for tuning threshold
+    let minThresholdCents: Double = 10.0
+    let maxThresholdCents: Double = 100.0
+    
     func setReferenceFrequency(_ frequency: Double) {
         referenceFrequency = max(minReferenceFrequency, min(maxReferenceFrequency, frequency))
         // Recalculate current note with new reference if we have a frequency
         if let currentFreq = currentNote?.frequency {
             analyzeFrequency(currentFreq)
         }
+    }
+    
+    func setTuningThreshold(_ cents: Double) {
+        tuningThresholdCents = max(minThresholdCents, min(maxThresholdCents, cents))
     }
     
     func analyzeFrequency(_ frequency: Double) {
@@ -159,15 +181,24 @@ class TuningEngine: ObservableObject {
             name: noteName,
             octave: octave,
             frequency: targetFrequency,
-            cents: cents
+            cents: cents,
+            threshold: tuningThresholdCents
         )
     }
     
     private func findClosestString(for frequency: Double) -> InstrumentString? {
         let strings = selectedInstrument.strings
         
-        // Find the string with frequency closest to detected frequency
-        return strings.min { string1, string2 in
+        // First, find strings whose frequency range contains the detected frequency
+        let candidateStrings = strings.filter { string in
+            string.frequencyRange(referenceA4: referenceFrequency).contains(frequency)
+        }
+        
+        // If no string's range contains the frequency, return nil (out of range)
+        guard !candidateStrings.isEmpty else { return nil }
+        
+        // Among candidate strings, find the one with the closest target frequency
+        return candidateStrings.min { string1, string2 in
             let freq1 = string1.targetFrequency(referenceA4: referenceFrequency)
             let freq2 = string2.targetFrequency(referenceA4: referenceFrequency)
             return abs(freq1 - frequency) < abs(freq2 - frequency)
