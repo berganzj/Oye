@@ -119,7 +119,7 @@ struct SettingsSection: View {
                     // Tuning Threshold Section
                     VStack(spacing: 8) {
                         HStack {
-                            Text("Out-of-Range Threshold")
+                            Text("In-Tune Threshold")
                                 .font(.subheadline)
                                 .foregroundColor(.secondary)
                             
@@ -295,8 +295,6 @@ struct NoteDisplay: View {
         case .inTune:
             return .green
         case .sharp, .flat:
-            return .orange
-        case .outOfRange:
             return .red
         }
     }
@@ -309,8 +307,6 @@ struct NoteDisplay: View {
             return "Sharp"
         case .flat:
             return "Flat"
-        case .outOfRange:
-            return "Out of Range"
         }
     }
 }
@@ -359,12 +355,10 @@ struct TuningMeter: View {
     }
     
     private var tuningIndicatorColor: Color {
-        if abs(cents) <= 5 {
+        if abs(cents) <= threshold {
             return .green
-        } else if abs(cents) > threshold {
-            return .red
         } else {
-            return .orange
+            return .red
         }
     }
 }

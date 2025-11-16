@@ -20,10 +20,8 @@ struct MusicalNote {
     }
     
     var tuningStatus: TuningStatus {
-        if abs(cents) <= 5 {
+        if abs(cents) <= threshold {
             return .inTune
-        } else if abs(cents) > threshold {
-            return .outOfRange
         } else if cents > 0 {
             return .sharp
         } else {
@@ -36,13 +34,11 @@ enum TuningStatus {
     case inTune
     case sharp
     case flat
-    case outOfRange
     
     var color: String {
         switch self {
         case .inTune: return "green"
-        case .sharp, .flat: return "orange"
-        case .outOfRange: return "red"
+        case .sharp, .flat: return "red"
         }
     }
     
@@ -51,7 +47,6 @@ enum TuningStatus {
         case .inTune: return "✓"
         case .sharp: return "♯"
         case .flat: return "♭"
-        case .outOfRange: return "⚠️"
         }
     }
 }
