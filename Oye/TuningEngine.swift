@@ -115,6 +115,7 @@ class TuningEngine: ObservableObject {
     @Published var currentNote: MusicalNote?
     @Published var selectedInstrument: InstrumentType = .guitar
     @Published var detectedString: InstrumentString?
+    @Published var selectedString: InstrumentString? // User-selected string for focused tuning
     @Published var referenceFrequency: Double = 440.0 // A4 - adjustable between 431-449 Hz
     @Published var tuningThresholdCents: Double = 45.0 // Configurable threshold for out-of-tune warning
     
@@ -147,12 +148,27 @@ class TuningEngine: ObservableObject {
             return
         }
         
-        // Convert frequency to musical note
-        let note = frequencyToNote(frequency)
-        currentNote = note
-        
-        // Find closest string for current instrument
-        detectedString = findClosestString(for: frequency)
+        // If user has selected a specific string, only analyze frequencies within that string's range
+        if let selectedString = selectedString {
+            let stringRange = selectedString.frequencyRange(referenceA4: referenceFrequency)
+            guard stringRange.contains(frequency) else {
+                // Frequency is outside selected string's range, ignore it
+                return
+            }
+            
+            // Convert frequency to musical note
+            let note = frequencyToNote(frequency)
+            currentNote = note
+            detectedString = selectedString
+        } else {
+            // No string selected, use original behavior
+            // Convert frequency to musical note
+            let note = frequencyToNote(frequency)
+            currentNote = note
+            
+            // Find closest string for current instrument
+            detectedString = findClosestString(for: frequency)
+        }
     }
     
     private func frequencyToNote(_ frequency: Double) -> MusicalNote {
@@ -205,6 +221,14 @@ class TuningEngine: ObservableObject {
         // Clear current detection when switching instruments
         currentNote = nil
         detectedString = nil
+        selectedString = nil
+    }
+    
+    func selectString(_ string: InstrumentString?) {
+        selectedString = string
+        // Clear current note to trigger fresh analysis
+        currentNote = nil
+        detectedString = nil
     }
 }
 
@@ -214,12 +238,14 @@ extension TuningEngine {
         guard let string = detectedString else { return nil }
         
         let cents = note.cents
+        let prefix = selectedString != nil ? "Selected \(string.name) string" : "\(string.name) string"
+        
         if abs(cents) <= 5 {
-            return "Perfect! \(string.name) string is in tune."
+            return "Perfect! \(prefix) is in tune."
         } else if cents > 0 {
-            return "\(string.name) string is \(Int(abs(cents))) cents sharp. Tune down."
+            return "\(prefix) is \(Int(abs(cents))) cents sharp. Tune down."
         } else {
-            return "\(string.name) string is \(Int(abs(cents))) cents flat. Tune up."
+            return "\(prefix) is \(Int(abs(cents))) cents flat. Tune up."
         }
     }
     

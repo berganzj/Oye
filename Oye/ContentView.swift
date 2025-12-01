@@ -234,7 +234,16 @@ struct TunerDisplay: View {
                         .padding(.horizontal)
                 }
             } else if audioManager.isListening {
-                if tuningEngine.detectedString == nil {
+                if let selectedString = tuningEngine.selectedString {
+                    VStack(spacing: 8) {
+                        Text("Play the \(selectedString.name) string")
+                            .font(.title2)
+                            .foregroundColor(.blue)
+                        Text("(String \(selectedString.stringNumber) - \(selectedString.targetFrequency(referenceA4: tuningEngine.referenceFrequency), specifier: "%.1f") Hz)")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                } else if tuningEngine.detectedString == nil {
                     Text("Note out of instrument range...")
                         .font(.title2)
                         .foregroundColor(.orange)
@@ -405,16 +414,41 @@ struct StringReference: View {
     
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("\(tuningEngine.selectedInstrument.rawValue) Strings")
-                .font(.headline)
-                .foregroundColor(.secondary)
+            HStack {
+                Text("\(tuningEngine.selectedInstrument.rawValue) Strings")
+                    .font(.headline)
+                    .foregroundColor(.secondary)
+                
+                Spacer()
+                
+                if tuningEngine.selectedString != nil {
+                    Button("Clear Selection") {
+                        tuningEngine.selectString(nil)
+                    }
+                    .font(.caption)
+                    .foregroundColor(.blue)
+                }
+            }
+            
+            if tuningEngine.selectedString == nil {
+                Text("Tap a string to focus tuning")
+                    .font(.caption)
+                    .foregroundColor(.orange)
+                    .padding(.bottom, 5)
+            } else {
+                Text("Focusing on \(tuningEngine.selectedString!.name) string (String \(tuningEngine.selectedString!.stringNumber))")
+                    .font(.caption)
+                    .foregroundColor(.green)
+                    .padding(.bottom, 5)
+            }
             
             LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: tuningEngine.selectedInstrument == .guitar ? 3 : 2), spacing: 10) {
                 ForEach(tuningEngine.selectedInstrument.strings, id: \.stringNumber) { string in
                     StringReferenceCard(
                         string: string, 
                         tuningEngine: tuningEngine,
-                        isDetected: tuningEngine.detectedString?.stringNumber == string.stringNumber
+                        isDetected: tuningEngine.detectedString?.stringNumber == string.stringNumber,
+                        isSelected: tuningEngine.selectedString?.stringNumber == string.stringNumber
                     )
                 }
             }
@@ -426,28 +460,84 @@ struct StringReferenceCard: View {
     let string: InstrumentString
     let tuningEngine: TuningEngine
     let isDetected: Bool
+    let isSelected: Bool
     
     var body: some View {
-        VStack(spacing: 4) {
-            Text("String \(string.stringNumber)")
-                .font(.caption)
-                .foregroundColor(.secondary)
-            
-            Text(string.name)
-                .font(.headline)
-                .fontWeight(.semibold)
-            
-            Text("\(string.targetFrequency(referenceA4: tuningEngine.referenceFrequency), specifier: "%.1f") Hz")
-                .font(.caption2)
-                .foregroundColor(.secondary)
+        Button(action: {
+            // Toggle selection: if this string is already selected, deselect it
+            if isSelected {
+                tuningEngine.selectString(nil)
+            } else {
+                tuningEngine.selectString(string)
+            }
+        }) {
+            VStack(spacing: 4) {
+                Text("String \(string.stringNumber)")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                
+                Text(string.name)
+                    .font(.headline)
+                    .fontWeight(.semibold)
+                    .foregroundColor(textColor)
+                
+                Text("\(string.targetFrequency(referenceA4: tuningEngine.referenceFrequency), specifier: "%.1f") Hz")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+                
+                if isSelected {
+                    Text("Selected")
+                        .font(.caption2)
+                        .foregroundColor(.green)
+                        .fontWeight(.medium)
+                } else if isDetected {
+                    Text("Detected")
+                        .font(.caption2)
+                        .foregroundColor(.blue)
+                        .fontWeight(.medium)
+                }
+            }
+            .padding(10)
+            .background(backgroundColor)
+            .cornerRadius(8)
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(borderColor, lineWidth: strokeWidth)
+            )
         }
-        .padding(10)
-        .background(isDetected ? Color.blue.opacity(0.2) : Color.gray.opacity(0.1))
-        .cornerRadius(8)
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(isDetected ? Color.blue : Color.clear, lineWidth: 2)
-        )
+        .buttonStyle(PlainButtonStyle())
+    }
+    
+    private var backgroundColor: Color {
+        if isSelected {
+            return Color.green.opacity(0.15)
+        } else if isDetected {
+            return Color.blue.opacity(0.15)
+        } else {
+            return Color.gray.opacity(0.1)
+        }
+    }
+    
+    private var borderColor: Color {
+        if isSelected {
+            return .green
+        } else if isDetected {
+            return .blue
+        } else {
+            return .clear
+        }
+    }
+    
+    private var strokeWidth: CGFloat {
+        return (isSelected || isDetected) ? 2 : 0
+    }
+    
+    private var textColor: Color {
+        if isSelected {
+            return .primary
+        } else {
+            return .primary
+        }
     }
 }
 
