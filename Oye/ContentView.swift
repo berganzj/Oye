@@ -89,100 +89,100 @@ struct SettingsSection: View {
             }
             
             if showSettings {
-                VStack(spacing: 16) {
-                    // Reference Frequency Section
-                    VStack(spacing: 8) {
-                        HStack {
-                            Text("Reference Frequency")
-                                .font(.subheadline)
-                                .foregroundColor(.secondary)
+                GlassContainer(cornerRadius: 16, padding: 16) {
+                    VStack(spacing: 16) {
+                        // Reference Frequency Section
+                        VStack(spacing: 8) {
+                            HStack {
+                                Text("Reference Frequency")
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
+                                
+                                Spacer()
+                                
+                                Text("A4 = \(tuningEngine.referenceFrequency, specifier: "%.1f") Hz")
+                                    .font(.subheadline)
+                                    .fontWeight(.medium)
+                            }
                             
-                            Spacer()
+                            Slider(
+                                value: Binding(
+                                    get: { tuningEngine.referenceFrequency },
+                                    set: { tuningEngine.setReferenceFrequency($0) }
+                                ),
+                                in: tuningEngine.minReferenceFrequency...tuningEngine.maxReferenceFrequency,
+                                step: 0.1
+                            ) {
+                                Text("Reference Frequency")
+                            } minimumValueLabel: {
+                                Text("431")
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                            } maximumValueLabel: {
+                                Text("449")
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                            }
                             
-                            Text("A4 = \(tuningEngine.referenceFrequency, specifier: "%.1f") Hz")
-                                .font(.subheadline)
-                                .fontWeight(.medium)
-                        }
-                        
-                        Slider(
-                            value: Binding(
-                                get: { tuningEngine.referenceFrequency },
-                                set: { tuningEngine.setReferenceFrequency($0) }
-                            ),
-                            in: tuningEngine.minReferenceFrequency...tuningEngine.maxReferenceFrequency,
-                            step: 0.1
-                        ) {
-                            Text("Reference Frequency")
-                        } minimumValueLabel: {
-                            Text("431")
-                                .font(.caption2)
-                                .foregroundColor(.secondary)
-                        } maximumValueLabel: {
-                            Text("449")
-                                .font(.caption2)
-                                .foregroundColor(.secondary)
-                        }
-                        
-                        Button("Reset to 440 Hz") {
-                            tuningEngine.setReferenceFrequency(440.0)
-                        }
-                        .font(.caption)
-                        .foregroundColor(.blue)
-                    }
-                    
-                    Divider()
-                    
-                    // Tuning Threshold Section
-                    VStack(spacing: 8) {
-                        HStack {
-                            Text("In-Tune Threshold")
-                                .font(.subheadline)
-                                .foregroundColor(.secondary)
-                            
-                            Spacer()
-                            
-                            Text("\(Int(tuningEngine.tuningThresholdCents)) cents")
-                                .font(.subheadline)
-                                .fontWeight(.medium)
-                        }
-                        
-                        Slider(
-                            value: Binding(
-                                get: { tuningEngine.tuningThresholdCents },
-                                set: { tuningEngine.setTuningThreshold($0) }
-                            ),
-                            in: tuningEngine.minThresholdCents...tuningEngine.maxThresholdCents,
-                            step: 5.0
-                        ) {
-                            Text("Tuning Threshold")
-                        } minimumValueLabel: {
-                            Text("10")
-                                .font(.caption2)
-                                .foregroundColor(.secondary)
-                        } maximumValueLabel: {
-                            Text("100")
-                                .font(.caption2)
-                                .foregroundColor(.secondary)
-                        }
-                        
-                        HStack {
-                            Button("Reset to 45 cents") {
-                                tuningEngine.setTuningThreshold(45.0)
+                            Button("Reset to 440 Hz") {
+                                tuningEngine.setReferenceFrequency(440.0)
                             }
                             .font(.caption)
                             .foregroundColor(.blue)
+                        }
+                        
+                        Divider()
+                        
+                        // Tuning Threshold Section
+                        VStack(spacing: 8) {
+                            HStack {
+                                Text("In-Tune Threshold")
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
+                                
+                                Spacer()
+                                
+                                Text("\(Int(tuningEngine.tuningThresholdCents)) cents")
+                                    .font(.subheadline)
+                                    .fontWeight(.medium)
+                            }
                             
-                            Spacer()
+                            Slider(
+                                value: Binding(
+                                    get: { tuningEngine.tuningThresholdCents },
+                                    set: { tuningEngine.setTuningThreshold($0) }
+                                ),
+                                in: tuningEngine.minThresholdCents...tuningEngine.maxThresholdCents,
+                                step: 5.0
+                            ) {
+                                Text("Tuning Threshold")
+                            } minimumValueLabel: {
+                                Text("10")
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                            } maximumValueLabel: {
+                                Text("100")
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                            }
                             
-                            Text("Shows red warning when beyond threshold")
-                                .font(.caption2)
-                                .foregroundColor(.secondary)
+                            HStack {
+                                Button("Reset to 45 cents") {
+                                    tuningEngine.setTuningThreshold(45.0)
+                                }
+                                .font(.caption)
+                                .foregroundColor(.blue)
+                                
+                                Spacer()
+                                
+                                Text("Shows red warning when beyond threshold")
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                            }
                         }
                     }
                 }
-                .padding()
             }
-            .glassCard()
         }
     }
 }
@@ -216,7 +216,7 @@ struct InstrumentSelector: View {
                 RoundedRectangle(cornerRadius: 8)
                     .stroke(Color.gray.opacity(0.3), lineWidth: 1)
             )
-            .glassCard()
+            .glassCard(cornerRadius: 8)
         }
     }
 }
