@@ -14,29 +14,45 @@ struct ContentView: View {
     
     var body: some View {
         NavigationView {
-            VStack(spacing: 25) {
-                // Settings Section
-                SettingsSection(tuningEngine: tuningEngine)
-                
-                // Simple Instrument Selector (Guitar/Ukulele text only)
-                InstrumentSelector(tuningEngine: tuningEngine)
-                
-                // Main Tuning Display
-                TunerDisplay(
-                    audioManager: audioManager,
-                    tuningEngine: tuningEngine
+            ZStack {
+                // Gradient background
+                LinearGradient(
+                    colors: [
+                        Color.blue.opacity(0.1),
+                        Color.purple.opacity(0.1),
+                        Color.pink.opacity(0.05)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
                 )
+                .ignoresSafeArea()
                 
-                // Control Buttons
-                TunerControls(audioManager: audioManager)
-                
-                // String Reference with accurate frequencies
-                StringReference(tuningEngine: tuningEngine)
-                
-                Spacer()
+                ScrollView {
+                    VStack(spacing: 25) {
+                        // Settings Section
+                        SettingsSection(tuningEngine: tuningEngine)
+                        
+                        // Simple Instrument Selector (Guitar/Ukulele text only)
+                        InstrumentSelector(tuningEngine: tuningEngine)
+                        
+                        // Main Tuning Display
+                        TunerDisplay(
+                            audioManager: audioManager,
+                            tuningEngine: tuningEngine
+                        )
+                        
+                        // Control Buttons
+                        TunerControls(audioManager: audioManager)
+                        
+                        // String Reference with accurate frequencies
+                        StringReference(tuningEngine: tuningEngine)
+                        
+                        Spacer()
+                    }
+                    .padding()
+                    .padding(.top, 8) // Extra padding from navigation bar
+                }
             }
-            .padding()
-            .padding(.top, 8) // Extra padding from navigation bar
             .navigationTitle("Oye")
             .navigationBarTitleDisplayMode(.inline)
         }
@@ -165,9 +181,8 @@ struct SettingsSection: View {
                     }
                 }
                 .padding()
-                .background(Color.gray.opacity(0.05))
-                .cornerRadius(12)
             }
+            .glassCard()
         }
     }
 }
@@ -201,6 +216,7 @@ struct InstrumentSelector: View {
                 RoundedRectangle(cornerRadius: 8)
                     .stroke(Color.gray.opacity(0.3), lineWidth: 1)
             )
+            .glassCard()
         }
     }
 }
@@ -211,50 +227,52 @@ struct TunerDisplay: View {
     @ObservedObject var tuningEngine: TuningEngine
     
     var body: some View {
-        VStack(spacing: 20) {
-            // Frequency Display
-            FrequencyDisplay(
-                frequency: audioManager.currentFrequency,
-                isListening: audioManager.isListening
-            )
-            
-            // Note Display
-            if let note = tuningEngine.currentNote {
-                NoteDisplay(note: note)
+        GlassContainer(cornerRadius: 20, padding: 20) {
+            VStack(spacing: 20) {
+                // Frequency Display
+                FrequencyDisplay(
+                    frequency: audioManager.currentFrequency,
+                    isListening: audioManager.isListening
+                )
                 
-                // Tuning Meter
-                TuningMeter(cents: note.cents, threshold: tuningEngine.tuningThresholdCents)
-                
-                // String Recommendation
-                if let recommendation = tuningEngine.getStringRecommendation(for: note) {
-                    Text(recommendation)
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal)
-                }
-            } else if audioManager.isListening {
-                if let selectedString = tuningEngine.selectedString {
-                    VStack(spacing: 8) {
-                        Text("Play the \(selectedString.name) string")
+                // Note Display
+                if let note = tuningEngine.currentNote {
+                    NoteDisplay(note: note)
+                    
+                    // Tuning Meter
+                    TuningMeter(cents: note.cents, threshold: tuningEngine.tuningThresholdCents)
+                    
+                    // String Recommendation
+                    if let recommendation = tuningEngine.getStringRecommendation(for: note) {
+                        Text(recommendation)
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal)
+                    }
+                } else if audioManager.isListening {
+                    if let selectedString = tuningEngine.selectedString {
+                        VStack(spacing: 8) {
+                            Text("Play the \(selectedString.name) string")
+                                .font(.title2)
+                                .foregroundColor(.blue)
+                            Text("(String \(selectedString.stringNumber) - \(selectedString.targetFrequency(referenceA4: tuningEngine.referenceFrequency), specifier: "%.1f") Hz)")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                    } else if tuningEngine.detectedString == nil {
+                        Text("Note out of instrument range...")
                             .font(.title2)
-                            .foregroundColor(.blue)
-                        Text("(String \(selectedString.stringNumber) - \(selectedString.targetFrequency(referenceA4: tuningEngine.referenceFrequency), specifier: "%.1f") Hz)")
-                            .font(.caption)
+                            .foregroundColor(.orange)
+                    } else {
+                        Text("Play a note...")
+                            .font(.title2)
                             .foregroundColor(.secondary)
                     }
-                } else if tuningEngine.detectedString == nil {
-                    Text("Note out of instrument range...")
-                        .font(.title2)
-                        .foregroundColor(.orange)
-                } else {
-                    Text("Play a note...")
-                        .font(.title2)
-                        .foregroundColor(.secondary)
                 }
             }
+            .frame(minHeight: 200)
         }
-        .frame(minHeight: 200)
     }
 }
 
@@ -391,11 +409,8 @@ struct TunerControls: View {
                 }
                 .font(.headline)
                 .foregroundColor(.white)
-                .padding(.horizontal, 30)
-                .padding(.vertical, 12)
-                .background(audioManager.isListening ? Color.red : Color.blue)
-                .cornerRadius(25)
             }
+            .glassButton(isEnabled: audioManager.permissionGranted)
             .disabled(!audioManager.permissionGranted)
         }
         
@@ -442,14 +457,16 @@ struct StringReference: View {
                     .padding(.bottom, 5)
             }
             
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: tuningEngine.selectedInstrument == .guitar ? 3 : 2), spacing: 10) {
-                ForEach(tuningEngine.selectedInstrument.strings, id: \.stringNumber) { string in
-                    StringReferenceCard(
-                        string: string, 
-                        tuningEngine: tuningEngine,
-                        isDetected: tuningEngine.detectedString?.stringNumber == string.stringNumber,
-                        isSelected: tuningEngine.selectedString?.stringNumber == string.stringNumber
-                    )
+            GlassContainer(cornerRadius: 16, padding: 12) {
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: tuningEngine.selectedInstrument == .guitar ? 3 : 2), spacing: 10) {
+                    ForEach(tuningEngine.selectedInstrument.strings, id: \.stringNumber) { string in
+                        StringReferenceCard(
+                            string: string, 
+                            tuningEngine: tuningEngine,
+                            isDetected: tuningEngine.detectedString?.stringNumber == string.stringNumber,
+                            isSelected: tuningEngine.selectedString?.stringNumber == string.stringNumber
+                        )
+                    }
                 }
             }
         }
