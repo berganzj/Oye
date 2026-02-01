@@ -52,7 +52,7 @@ class AudioManager: ObservableObject {
     }
     
     private func requestMicrophonePermission() {
-        AVAudioSession.sharedInstance().requestRecordPermission { [weak self] granted in
+        AVAudioApplication.requestRecordPermission { [weak self] granted in
             Task { @MainActor in
                 self?.permissionGranted = granted
                 if granted {
@@ -205,32 +205,36 @@ class FFTAnalyzer {
         var realParts = [Float](repeating: 0.0, count: halfSize)
         var imaginaryParts = [Float](repeating: 0.0, count: halfSize)
         
-        // Convert to split complex format
-        var splitComplex = DSPSplitComplex(realp: &realParts, imagp: &imaginaryParts)
-        
-        // Convert input to packed format for FFT
-        windowedData.withUnsafeBufferPointer { inputPtr in
-            vDSP_ctoz(UnsafePointer<DSPComplex>(OpaquePointer(inputPtr.baseAddress!)), 2, &splitComplex, 1, vDSP_Length(halfSize))
+        // Convert to split complex format - use withUnsafeMutablePointer to get pointers that outlive the struct
+        return realParts.withUnsafeMutableBufferPointer { realPtr in
+            imaginaryParts.withUnsafeMutableBufferPointer { imagPtr in
+                var splitComplex = DSPSplitComplex(realp: realPtr.baseAddress!, imagp: imagPtr.baseAddress!)
+                
+                // Convert input to packed format for FFT
+                windowedData.withUnsafeBufferPointer { inputPtr in
+                    vDSP_ctoz(UnsafePointer<DSPComplex>(OpaquePointer(inputPtr.baseAddress!)), 2, &splitComplex, 1, vDSP_Length(halfSize))
+                }
+                
+                // Perform FFT
+                vDSP_fft_zrip(fftSetup, &splitComplex, 1, log2n, Int32(FFT_FORWARD))
+                
+                // Calculate magnitudes
+                var magnitudes = [Float](repeating: 0.0, count: halfSize)
+                vDSP_zvmags(&splitComplex, 1, &magnitudes, 1, vDSP_Length(halfSize))
+                
+                // Find peak frequency
+                var maxIndex: vDSP_Length = 0
+                var maxValue: Float = 0
+                vDSP_maxvi(&magnitudes, 1, &maxValue, &maxIndex, vDSP_Length(halfSize))
+                
+                // Convert bin index to frequency
+                let frequency = Double(maxIndex) * sampleRate / Double(bufferSize)
+                
+                // Apply threshold to filter out noise
+                let threshold: Float = magnitudes.max()! * 0.1
+                return maxValue > threshold ? frequency : nil
+            }
         }
-        
-        // Perform FFT
-        vDSP_fft_zrip(fftSetup, &splitComplex, 1, log2n, Int32(FFT_FORWARD))
-        
-        // Calculate magnitudes
-        var magnitudes = [Float](repeating: 0.0, count: halfSize)
-        vDSP_zvmags(&splitComplex, 1, &magnitudes, 1, vDSP_Length(halfSize))
-        
-        // Find peak frequency
-        var maxIndex: vDSP_Length = 0
-        var maxValue: Float = 0
-        vDSP_maxvi(&magnitudes, 1, &maxValue, &maxIndex, vDSP_Length(halfSize))
-        
-        // Convert bin index to frequency
-        let frequency = Double(maxIndex) * sampleRate / Double(bufferSize)
-        
-        // Apply threshold to filter out noise
-        let threshold: Float = magnitudes.max()! * 0.1
-        return maxValue > threshold ? frequency : nil
     }
     
     private func applyHannWindow(_ data: inout [Float]) {
