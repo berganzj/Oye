@@ -53,10 +53,11 @@ class AudioManager: ObservableObject {
     
     private func requestMicrophonePermission() {
         AVAudioApplication.requestRecordPermission { [weak self] granted in
-            Task { @MainActor in
-                self?.permissionGranted = granted
+            guard let self = self else { return }
+            Task { @MainActor [self] in
+                self.permissionGranted = granted
                 if granted {
-                    self?.configureAudioSession()
+                    self.configureAudioSession()
                 }
             }
         }
